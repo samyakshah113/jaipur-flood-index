@@ -1,0 +1,2 @@
+name,lat,lon,flooded,source,date,depth_cm,notes
+EXAMPLE - replace this whole file with your own observations,26.9124,75.7873,1,"REPLACE ME - see docs/HOW_TO_COLLECT_GROUND_TRUTH.md",2025-07-15,30,"This row exists only to show the format. Delete it."

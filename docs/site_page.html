@@ -1,0 +1,1045 @@
+<title>Jaipur Flood Vulnerability Index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* ---- tokens: light is the base, both dark states redefine only these ---- */
+  :root {
+    --ground:      #EDF1F4;
+    --surface:     #FFFFFF;
+    --surface-alt: #E3E9ED;
+    --ink:         #0F1922;
+    --ink-muted:   #566673;
+    --ink-faint:   #8494A1;
+    --rule:        #CDD7DE;
+    --rule-strong: #A9B7C1;
+
+    --water:       #14618F;
+    --water-deep:  #0A3A57;
+    --water-wash:  rgba(20, 97, 143, 0.09);
+
+    --good:        #2C7A54;
+    --caution:     #B4801E;
+    --severe:      #B23A2C;
+
+    --contour-lo:  #C2D2DC;
+    --contour-hi:  #8FA8B8;
+    --pool:        rgba(20, 97, 143, 0.22);
+
+    --shadow: 0 1px 2px rgba(15, 25, 34, .05), 0 8px 24px -12px rgba(15, 25, 34, .16);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0C1318;
+      --surface:     #141D24;
+      --surface-alt: #1B262E;
+      --ink:         #E2EAEF;
+      --ink-muted:   #93A4B1;
+      --ink-faint:   #6B7E8C;
+      --rule:        #26333C;
+      --rule-strong: #3A4B57;
+
+      --water:       #4FA6DA;
+      --water-deep:  #9FCDE8;
+      --water-wash:  rgba(79, 166, 218, 0.12);
+
+      --good:        #4FB183;
+      --caution:     #DCA845;
+      --severe:      #E0705F;
+
+      --contour-lo:  #21313B;
+      --contour-hi:  #3D5563;
+      --pool:        rgba(79, 166, 218, 0.20);
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0C1318;
+    --surface:     #141D24;
+    --surface-alt: #1B262E;
+    --ink:         #E2EAEF;
+    --ink-muted:   #93A4B1;
+    --ink-faint:   #6B7E8C;
+    --rule:        #26333C;
+    --rule-strong: #3A4B57;
+
+    --water:       #4FA6DA;
+    --water-deep:  #9FCDE8;
+    --water-wash:  rgba(79, 166, 218, 0.12);
+
+    --good:        #4FB183;
+    --caution:     #DCA845;
+    --severe:      #E0705F;
+
+    --contour-lo:  #21313B;
+    --contour-hi:  #3D5563;
+    --pool:        rgba(79, 166, 218, 0.20);
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+
+  /* ---------------------------------------------------------------- base */
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Spectral", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  h1, h2, h3, .label, .stat-value, nav, button {
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  h2 {
+    font-size: 1.42rem;
+    font-weight: 700;
+    letter-spacing: -0.012em;
+    line-height: 1.25;
+    text-wrap: balance;
+    margin: 0 0 4px;
+  }
+
+  h3 {
+    font-size: 1.02rem;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    margin: 0 0 6px;
+  }
+
+  p { margin: 0 0 18px; }
+  p:last-child { margin-bottom: 0; }
+
+  a {
+    color: var(--water);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.86em;
+  }
+
+  code {
+    background: var(--water-wash);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .label {
+    font-size: 0.685rem;
+    font-weight: 650;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  section { padding-top: 52px; }
+
+  .section-head {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 22px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .lede {
+    font-size: 1.06rem;
+    color: var(--ink-muted);
+  }
+
+  /* ---------------------------------------------------------------- hero */
+  .hero {
+    position: relative;
+    margin: 0 -24px;
+    padding: 0;
+    border-bottom: 1px solid var(--rule);
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  #contours {
+    display: block;
+    width: 100%;
+    height: 250px;
+  }
+
+  .hero-text {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 30px 24px 34px;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5.6vw, 2.85rem);
+    font-weight: 800;
+    letter-spacing: -0.028em;
+    line-height: 1.04;
+    margin: 10px 0 14px;
+    text-wrap: balance;
+  }
+
+  .hero-sub {
+    font-size: 1.12rem;
+    color: var(--ink-muted);
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  .hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.775rem;
+    color: var(--ink-faint);
+  }
+
+  .hero-meta b {
+    color: var(--ink-muted);
+    font-weight: 500;
+  }
+
+  /* ------------------------------------------------------ status banner */
+  .status {
+    display: flex;
+    gap: 13px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--caution);
+    border-radius: 3px;
+    padding: 15px 18px;
+    margin-top: 34px;
+    font-size: 0.94rem;
+  }
+
+  .status .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--caution);
+    flex: 0 0 auto;
+    margin-top: 9px;
+  }
+
+  .status p { margin: 0; color: var(--ink-muted); }
+  .status strong { color: var(--ink); font-weight: 500; }
+
+  /* ------------------------------------------------------- components */
+  .components {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .component {
+    background: var(--surface);
+    padding: 20px 19px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .component .weight {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--water);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .component p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+  }
+
+  .component ul {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.755rem;
+    color: var(--ink-faint);
+    line-height: 1.75;
+  }
+
+  /* ------------------------------------------------------------ chain */
+  /* Numbered because this genuinely is a sequence: each step needs the last. */
+  .chain { display: flex; flex-direction: column; gap: 0; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 18px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .step:first-child { padding-top: 4px; }
+  .step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--water);
+    padding-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step p {
+    margin: 6px 0 0;
+    font-size: 0.94rem;
+    color: var(--ink-muted);
+  }
+
+  .step .why {
+    margin-top: 9px;
+    padding-left: 13px;
+    border-left: 2px solid var(--rule-strong);
+    font-size: 0.885rem;
+    font-style: italic;
+    color: var(--ink-faint);
+  }
+
+  /* ------------------------------------------------------- calculator */
+  .calc {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 22px 22px 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .formula {
+    text-align: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 1.02rem;
+    color: var(--ink);
+    padding: 14px 0 18px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 20px;
+  }
+  .formula .frac {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: middle;
+    text-align: center;
+    margin: 0 3px;
+  }
+  .formula .frac .num { border-bottom: 1px solid var(--rule-strong); padding: 0 9px 2px; }
+  .formula .frac .den { padding: 2px 9px 0; }
+
+  .slider-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    margin-bottom: 18px;
+  }
+
+  .slider-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .slider-head span:first-child {
+    font-family: "Archivo", sans-serif;
+    font-size: 0.855rem;
+    font-weight: 550;
+  }
+
+  .slider-head output {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.83rem;
+    color: var(--water);
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--water);
+    height: 22px;
+    cursor: pointer;
+  }
+  input[type="range"]:focus-visible {
+    outline: 2px solid var(--water);
+    outline-offset: 3px;
+  }
+
+  .readout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .readout-value {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 2.05rem;
+    font-weight: 500;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .readout-verdict {
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+    max-width: 34ch;
+  }
+
+  /* --------------------------------------------------------- auc scale */
+  .auc-scale {
+    display: grid;
+    grid-template-columns: 78px 1fr;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .auc-row {
+    display: contents;
+  }
+
+  .auc-num, .auc-desc {
+    padding: 11px 15px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.9rem;
+  }
+
+  .auc-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border-right: 1px solid var(--rule);
+  }
+
+  .auc-desc { color: var(--ink-muted); }
+
+  .auc-row:last-child .auc-num,
+  .auc-row:last-child .auc-desc { border-bottom: none; }
+
+  /* ------------------------------------------------------- limitations */
+  .limits {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .limits li {
+    padding-left: 17px;
+    border-left: 2px solid var(--severe);
+    font-size: 0.945rem;
+  }
+
+  .limits strong {
+    font-family: "Archivo", sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: block;
+    margin-bottom: 2px;
+    color: var(--ink);
+  }
+
+  .limits span { color: var(--ink-muted); }
+
+  /* ------------------------------------------------------------ boxes */
+  .note {
+    background: var(--surface-alt);
+    border-radius: 4px;
+    padding: 17px 19px;
+    font-size: 0.925rem;
+    color: var(--ink-muted);
+  }
+  .note strong { color: var(--ink); font-weight: 500; }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 15px 17px;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.815rem;
+    line-height: 1.7;
+    color: var(--ink);
+    margin: 0 0 18px;
+  }
+  pre .c { color: var(--ink-faint); }
+
+  .sources {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+  }
+
+  .source {
+    border-top: 2px solid var(--water);
+    padding-top: 11px;
+  }
+  .source h3 { font-size: 0.9rem; margin-bottom: 3px; }
+  .source p { font-size: 0.85rem; color: var(--ink-muted); margin: 0; }
+  .source .lic {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    display: block;
+    margin-top: 5px;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-size: 0.86rem;
+    color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .step { grid-template-columns: 32px 1fr; gap: 12px; }
+    .auc-scale { grid-template-columns: 64px 1fr; }
+  }
+</style>
+
+<div class="hero">
+  <canvas id="contours" aria-label="Stylised contour map showing water collecting in low-lying ground"></canvas>
+  <div class="hero-text">
+    <div class="label">Open-data urban hydrology &middot; Jaipur, Rajasthan</div>
+    <h1>Jaipur Flood Vulnerability Index</h1>
+    <p class="hero-sub">
+      Jaipur waterlogs in roughly the same places every monsoon. This model asks whether
+      that is predictable from freely available data &mdash; and which of those places can
+      least afford it.
+    </p>
+    <div class="hero-meta">
+      <span><b>Resolution</b> 300&nbsp;m grid</span>
+      <span><b>Elevation</b> SRTM ~30&nbsp;m</span>
+      <span><b>Rainfall</b> ERA5, 2015&ndash;2025</span>
+      <span><b>Cost</b> &#8377;0, no API keys</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="status">
+    <div class="dot"></div>
+    <p><strong>Status: built and tested, awaiting field validation.</strong>
+    The pipeline runs end to end and its hydrology is verified against landscapes with
+    known answers. It has not yet been tested against observed waterlogging in Jaipur,
+    so no risk figures are published here. That step is in progress and is described below.</p>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <div class="label">The question</div>
+      <h2>Where does the water actually go?</h2>
+    </div>
+    <p>
+      Municipal drainage budgets are finite and have to be spent somewhere. Deciding where
+      is usually done from complaint volume and institutional memory, which favours the
+      neighbourhoods that complain loudest.
+    </p>
+    <p>
+      Water is less political. It runs downhill, collects in hollows, and pools where the
+      ground is flat and a large area drains through. All three of those are computable
+      from an elevation map using methods hydrologists have used since the 1970s. Layer on
+      what is built there and how well served it is, and you get a ranked list of places
+      to look at first.
+    </p>
+    <p>
+      Every input is free and needs no account, because a model nobody else can run is not
+      much of a model.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Structure</div>
+      <h2>Three components, openly weighted</h2>
+      <p class="lede">Weights are a judgement call, so they live in one visible config file &mdash; and get stress-tested.</p>
+    </div>
+
+    <div class="components">
+      <div class="component">
+        <div class="label">Hazard</div>
+        <div class="weight">0.50</div>
+        <p>Does water physically collect here?</p>
+        <ul>
+          <li>topographic wetness index</li>
+          <li>depression depth</li>
+          <li>flow accumulation</li>
+          <li>distance to drainage</li>
+          <li>slope</li>
+        </ul>
+      </div>
+      <div class="component">
+        <div class="label">Exposure</div>
+        <div class="weight">0.25</div>
+        <p>How much is here to be damaged?</p>
+        <ul>
+          <li>building density</li>
+          <li>road density</li>
+          <li>schools &amp; clinics</li>
+        </ul>
+      </div>
+      <div class="component">
+        <div class="label">Sensitivity</div>
+        <div class="weight">0.25</div>
+        <p>How well can people here absorb it?</p>
+        <ul>
+          <li>unpaved road share</li>
+          <li>settlement density</li>
+          <li>absence of drainage</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:20px">
+      <strong>On the sensitivity component.</strong> Ward-level income data for Jaipur is not
+      public at 300&nbsp;m resolution, so this layer uses infrastructure proxies. Proxies can be
+      wrong about real neighbourhoods &mdash; a new development has unpaved roads without
+      deprivation; the walled city is dense without being poor. Outputs touching this
+      component are described as <em>areas with infrastructure characteristics associated
+      with disadvantage</em>, never as poor areas. The distinction matters because getting it
+      wrong misdirects resources away from people who need them.
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Method</div>
+      <h2>The hydrology, in order</h2>
+      <p class="lede">Each step depends on the one before it. Running them out of order produces a map that looks plausible and means nothing.</p>
+    </div>
+
+    <div class="chain">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div>
+          <h3>Fill the sinks</h3>
+          <p>Priority-Flood (Barnes, Lehman &amp; Mulla, 2014). Flood the landscape inward
+          from its edges, always processing the lowest cell on the shoreline.</p>
+          <div class="why">A single pixel wrongly 2&nbsp;m too low becomes a pit with no downhill
+          neighbour. Water flowing in vanishes, and everything downstream of it is wrong.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">02</div>
+        <div>
+          <h3>Route the flow</h3>
+          <p>D8 steepest descent: each cell sends its water to whichever of its eight
+          neighbours is steepest downhill.</p>
+          <div class="why">Diagonal neighbours are 1.414&times; further away, so the comparison is
+          on slope, not raw drop. Forgetting that biases every flow path diagonally &mdash; the
+          classic version of this bug.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">03</div>
+        <div>
+          <h3>Accumulate</h3>
+          <p>Process cells from highest to lowest, passing each running total downstream.
+          One pass, no recursion.</p>
+          <div class="why">A cell with accumulation 5 catches its own rain. A cell with 5,000
+          is a drainage channel collecting runoff from half a square kilometre. From the
+          street they look identical.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">04</div>
+        <div>
+          <h3>Compute wetness</h3>
+          <p>The Topographic Wetness Index (Beven &amp; Kirkby, 1979), combining how much water
+          arrives with how slowly it leaves.</p>
+          <div class="why">High where the ground is both low and flat &mdash; which describes
+          almost every chronic waterlogging spot in any city. Try it below.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Try it</div>
+      <h2>The wetness index, by hand</h2>
+      <p class="lede">The single most useful number in the model. Move the sliders and watch what makes it spike.</p>
+    </div>
+
+    <div class="calc">
+      <div class="formula">
+        TWI = ln
+        <span class="frac">
+          <span class="num">a</span>
+          <span class="den">tan &beta;</span>
+        </span>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>Upslope contributing area &mdash; how much land drains through this spot</span>
+          <output id="areaOut">2,700 m&sup2;/m</output>
+        </div>
+        <input type="range" id="area" min="1" max="500" value="30" aria-label="Upslope contributing area">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>Local slope &mdash; how steeply the ground falls away</span>
+          <output id="slopeOut">2.0&deg;</output>
+        </div>
+        <input type="range" id="slope" min="1" max="250" value="20" aria-label="Local slope in tenths of a degree">
+      </div>
+
+      <div class="readout">
+        <div class="readout-value" id="twiOut">11.3</div>
+        <div class="readout-verdict" id="verdict"></div>
+      </div>
+    </div>
+
+    <p style="margin-top:20px">
+      Notice how much harder the slope slider pushes than the area slider. Flattening the
+      ground drives the index up far faster than adding catchment does, because slope sits
+      in the denominator. That is why a flat colony at the bottom of a gentle bowl floods
+      more reliably than a steeper street with a much larger catchment above it.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Honesty</div>
+      <h2>How you would know if it were wrong</h2>
+      <p class="lede">A coloured map looks convincing whether or not it is correct. This is the part that decides.</p>
+    </div>
+
+    <p>
+      Validation means collecting places in Jaipur that genuinely waterlogged &mdash; and
+      places that genuinely stayed dry &mdash; from local news archives around known storm
+      dates, from storm-day reports, and from walking the city with a notebook. Then
+      checking whether the model scored the first group higher than the second.
+    </p>
+    <p>
+      The negatives are the hard part and the essential part. With flooded points only, a
+      model that declares the whole city high risk scores perfectly. Nobody photographs a
+      dry road, so they have to be sought deliberately.
+    </p>
+    <p>
+      The reported metric is <strong>AUC</strong>: given one flooded and one dry location
+      picked at random, the probability the model ranked the flooded one higher. It is
+      threshold-free and unaffected by class imbalance, which accuracy is not.
+    </p>
+
+    <div class="auc-scale">
+      <div class="auc-row"><div class="auc-num" style="color:var(--severe)">0.50</div><div class="auc-desc">A coin flip. No signal at all.</div></div>
+      <div class="auc-row"><div class="auc-num" style="color:var(--caution)">0.65</div><div class="auc-desc">Weak, but real.</div></div>
+      <div class="auc-row"><div class="auc-num" style="color:var(--good)">0.75</div><div class="auc-desc">Respectable for a screening tool built from open data.</div></div>
+      <div class="auc-row"><div class="auc-num" style="color:var(--good)">0.85</div><div class="auc-desc">Strong.</div></div>
+      <div class="auc-row"><div class="auc-num" style="color:var(--ink-faint)">1.00</div><div class="auc-desc">Suspect a bug or data leakage before celebrating.</div></div>
+    </div>
+
+    <p style="margin-top:22px">
+      Reported alongside it: a bootstrap 95% confidence interval, because a forty-point
+      sample deserves error bars rather than a falsely precise number; and a comparison
+      against single-variable baselines. If <code>relative elevation</code> alone matches the
+      full composite index, the extra machinery is not earning its keep &mdash; and that
+      gets reported rather than buried.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Robustness</div>
+      <h2>Testing my own assumptions</h2>
+    </div>
+    <p>
+      The weights above are a judgement call. A fair critic points out that different
+      weights give a different map, so why believe this one?
+    </p>
+    <p>
+      Rather than argue the point, the index is recomputed 200 times with every weight
+      randomly perturbed by up to &plusmn;50% and renormalised. Cells that stay in the worst
+      10% under nearly every weighting are robust findings. Cells that jump around are
+      artefacts of the assumptions, and reporting them as results would be overclaiming.
+    </p>
+    <p>
+      Only the robust cells reach the priority list. This is also where a real bug turned
+      up: the first priority list ranked low-lying cells containing three buildings &mdash;
+      hydrologically correct, operationally useless. Nobody needs an empty field
+      de-watered. A minimum-exposure filter now applies to the action list, with the
+      reasoning written into the code.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Limits</div>
+      <h2>What this model cannot do</h2>
+    </div>
+
+    <ul class="limits">
+      <li><strong>It is relative, not absolute</strong><span>A score of 95 means &ldquo;worse than 95% of Jaipur&rdquo;. It never means a predicted depth. This is a prioritisation tool, not a hazard assessment.</span></li>
+      <li><strong>300&nbsp;m cannot see a blocked drain</strong><span>Street-level waterlogging often comes down to one clogged inlet. The model finds where terrain is against you; it cannot find the culvert.</span></li>
+      <li><strong>The elevation data is from 2000</strong><span>SRTM predates two decades of construction and road-raising across Jaipur. Regraded ground is invisible to it.</span></li>
+      <li><strong>No hydraulics, no drainage capacity</strong><span>This is a static index, not a shallow-water simulation. A drain&rsquo;s presence counts; its diameter and whether it is blocked are unknown and matter enormously.</span></li>
+      <li><strong>OpenStreetMap coverage is uneven &mdash; and that cuts the wrong way</strong><span>Mapping effort tends to correlate with affluence, so under-mapped areas may appear to have less infrastructure and also less of everything else. This could bias the model against exactly the neighbourhoods it exists to find. It is the limitation I have not solved.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Inputs</div>
+      <h2>Data</h2>
+    </div>
+    <div class="sources">
+      <div class="source">
+        <h3>Terrain</h3>
+        <p>AWS Terrain Tiles, derived from NASA SRTM. Elevation encoded in RGB.</p>
+        <span class="lic">Public domain</span>
+      </div>
+      <div class="source">
+        <h3>Infrastructure</h3>
+        <p>OpenStreetMap via Overpass &mdash; drains, roads, buildings, facilities.</p>
+        <span class="lic">ODbL</span>
+      </div>
+      <div class="source">
+        <h3>Rainfall</h3>
+        <p>Open-Meteo historical archive, built on ERA5 reanalysis.</p>
+        <span class="lic">CC BY 4.0</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="label">Reproduce it</div>
+      <h2>Running the model</h2>
+    </div>
+<pre><span class="c"># synthetic data, offline, about ten seconds</span>
+python run_pipeline.py --demo
+
+<span class="c"># real downloaded data, about fifteen minutes</span>
+python run_pipeline.py
+
+<span class="c"># verify the hydrology against landscapes with known answers</span>
+python -m pytest tests/ -v</pre>
+    <p>
+      The tests check that filling a pit raises it to the surrounding level, that water in
+      a V-shaped valley collects on the valley floor, and that flow accumulation never
+      invents water. If those fail, every map the project produces is wrong.
+    </p>
+  </section>
+
+  <footer>
+    Samyak Shah &middot; Jaipur &middot; open source under MIT.
+    Built from free public data so that anyone can check it.
+  </footer>
+</div>
+
+<script>
+  /* ---------------- hero: a contour field with water pooling in the lows --- */
+  (function () {
+    const canvas = document.getElementById("contours");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    function palette() {
+      const s = getComputedStyle(document.documentElement);
+      return {
+        lo: s.getPropertyValue("--contour-lo").trim(),
+        hi: s.getPropertyValue("--contour-hi").trim(),
+        pool: s.getPropertyValue("--pool").trim(),
+        ground: s.getPropertyValue("--surface").trim()
+      };
+    }
+
+    /* A synthetic terrain: a regional tilt, a meandering valley, a few hollows.
+       Same character as the demo DEM in the pipeline. */
+    function field(x, y, w, h) {
+      const nx = x / w, ny = y / h;
+      let z = 1.0 - ny * 0.45 - nx * 0.18;
+      const valley = 0.46 + Math.sin(ny * 5.4) * 0.10;
+      const d = (nx - valley) * w / h;
+      z -= 0.42 * Math.exp(-(d * d) / 0.030);
+      z += 0.045 * Math.sin(nx * 13.5) + 0.035 * Math.cos(ny * 11.0);
+      z += 0.028 * Math.sin(nx * 27.0 + 1.3) * Math.cos(ny * 22.0);
+      const hollows = [[0.19, 0.60, 0.055], [0.76, 0.34, 0.048], [0.63, 0.78, 0.042]];
+      for (const [hx, hy, r] of hollows) {
+        const dx = nx - hx, dy = (ny - hy) * (h / w) * 2.2;
+        z -= 0.17 * Math.exp(-(dx * dx + dy * dy) / (2 * r * r));
+      }
+      return z;
+    }
+
+    function draw() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) return;
+
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const c = palette();
+      ctx.fillStyle = c.ground;
+      ctx.fillRect(0, 0, w, h);
+
+      const image = ctx.createImageData(w, h);
+      const data = image.data;
+
+      const poolLevel = 0.30;
+      const interval = 0.032;
+
+      function rgba(hex) {
+        if (hex.startsWith("rgba")) {
+          const p = hex.match(/[\d.]+/g).map(Number);
+          return [p[0], p[1], p[2], p[3] * 255];
+        }
+        const v = parseInt(hex.slice(1), 16);
+        return [(v >> 16) & 255, (v >> 8) & 255, v & 255, 255];
+      }
+
+      const lo = rgba(c.lo), hi = rgba(c.hi), pool = rgba(c.pool);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const z = field(x, y, w, h);
+          const i = (y * w + x) * 4;
+
+          /* shade standing water in the lows */
+          if (z < poolLevel) {
+            const depth = Math.min((poolLevel - z) / 0.22, 1);
+            data[i] = pool[0]; data[i + 1] = pool[1]; data[i + 2] = pool[2];
+            data[i + 3] = pool[3] * (0.35 + depth * 0.65);
+          }
+
+          /* contour lines: distance to the nearest multiple of `interval` */
+          const phase = Math.abs(((z / interval) % 1 + 1) % 1 - 0.5);
+          if (phase > 0.455) {
+            const strength = (phase - 0.455) / 0.045;
+            const major = Math.abs(((z / (interval * 5)) % 1 + 1) % 1 - 0.5) > 0.47;
+            const col = major ? hi : lo;
+            const a = col[3] * strength * (major ? 1 : 0.8);
+            /* blend the line over whatever is already in the buffer */
+            const prevA = data[i + 3] / 255;
+            const outA = a / 255 + prevA * (1 - a / 255);
+            data[i] = (col[0] * (a / 255) + data[i] * prevA * (1 - a / 255)) / (outA || 1);
+            data[i + 1] = (col[1] * (a / 255) + data[i + 1] * prevA * (1 - a / 255)) / (outA || 1);
+            data[i + 2] = (col[2] * (a / 255) + data[i + 2] * prevA * (1 - a / 255)) / (outA || 1);
+            data[i + 3] = outA * 255;
+          }
+        }
+      }
+
+      ctx.putImageData(image, 0, 0);
+    }
+
+    draw();
+
+    let resizeTimer;
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(draw, 150);
+    });
+
+    /* Redraw when the viewer flips theme, so the contours match the ground. */
+    if (window.matchMedia) {
+      const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+      if (scheme.addEventListener) scheme.addEventListener("change", draw);
+    }
+    new MutationObserver(draw).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme"]
+    });
+  })();
+
+  /* ---------------- TWI calculator ---------------------------------------- */
+  (function () {
+    const areaInput = document.getElementById("area");
+    const slopeInput = document.getElementById("slope");
+    const areaOut = document.getElementById("areaOut");
+    const slopeOut = document.getElementById("slopeOut");
+    const twiOut = document.getElementById("twiOut");
+    const verdict = document.getElementById("verdict");
+    if (!areaInput) return;
+
+    const styles = getComputedStyle(document.documentElement);
+
+    function update() {
+      /* Slider units: area in 90 m2/m steps, slope in tenths of a degree.
+         These ranges are chosen to span what the real Jaipur grid produces. */
+      const area = Number(areaInput.value) * 90;
+      const slopeDeg = Number(slopeInput.value) / 10;
+
+      const slopeRad = Math.max(slopeDeg * Math.PI / 180, 0.001);
+      const twi = Math.log(area / Math.tan(slopeRad));
+
+      areaOut.textContent = area.toLocaleString("en-IN") + " m²/m";
+      slopeOut.textContent = slopeDeg.toFixed(1) + "°";
+      twiOut.textContent = twi.toFixed(1);
+
+      let colour, text;
+      if (twi < 8) {
+        colour = styles.getPropertyValue("--good");
+        text = "Drains freely. Steep enough, or too little catchment above, for water to stand.";
+      } else if (twi < 11) {
+        colour = styles.getPropertyValue("--caution");
+        text = "Typical urban ground. Wet during a storm, clear soon after it stops.";
+      } else if (twi < 14) {
+        colour = styles.getPropertyValue("--severe");
+        text = "Water collects here. The kind of spot that appears in the same photographs every monsoon.";
+      } else {
+        colour = styles.getPropertyValue("--severe");
+        text = "Effectively a basin. Flat ground at the bottom of a large catchment — standing water that lingers for days.";
+      }
+      twiOut.style.color = colour;
+      verdict.textContent = text;
+    }
+
+    areaInput.addEventListener("input", update);
+    slopeInput.addEventListener("input", update);
+    update();
+  })();
+</script>
