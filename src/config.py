@@ -135,14 +135,22 @@ USER_AGENT = (
 
 HTTP_HEADERS = {"User-Agent": USER_AGENT}
 
-# Overpass mirrors, tried in order. overpass.osm.ch is listed first because it proved
-# the most reliable in testing; the others are healthy fallbacks once a proper
-# User-Agent is sent.
+# Overpass mirrors, ordered by MEASURED capability rather than by which one
+# answers fastest. Counts are road ways returned for the Jaipur bounding box:
+#
+#     overpass-api.de           65,205
+#     overpass.private.coffee   63,656
+#     overpass.kumi.systems     (timed out under load, but serves global data)
+#     overpass.osm.ch                0   <- REMOVED, see below
+#
+# overpass.osm.ch is a REGIONAL instance. Queried for Jaipur it returns HTTP 200,
+# valid JSON, no remark, and zero elements. Every automated check passes and the
+# answer is empty. It is deliberately not in this list: a mirror that confidently
+# reports "nothing here" for a city of four million is worse than one that fails.
 OVERPASS_MIRRORS = [
-    "https://overpass.osm.ch/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
 ]
 
 

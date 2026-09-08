@@ -63,12 +63,18 @@ def _validate_overpass_response(response):
     return data
 
 
-def _run_overpass_query(query, verbose=True):
+def _run_overpass_query(query, verbose=True, expect_results=True):
     """
     Send a query to Overpass, trying each mirror until one gives a valid answer.
 
     Every request identifies itself via config.HTTP_HEADERS. Without that, mirrors
     return 406 or 429 and the pipeline ends up with no data at all.
+
+    expect_results=True treats an EMPTY answer as a failure worth retrying elsewhere.
+    That is not paranoia: a regional Overpass instance queried outside its region
+    returns 200, valid JSON, no remark, and zero elements. Accepting that silently is
+    exactly how this project first produced a blank map of Jaipur and called it a
+    success. If a mirror has no data for the study area, move on to one that does.
     """
     problems = []
 
@@ -86,9 +92,16 @@ def _run_overpass_query(query, verbose=True):
             )
 
             data = _validate_overpass_response(response)
+            n_elements = len(data.get("elements", []))
+
+            if expect_results and n_elements == 0:
+                raise ValueError(
+                    "returned 0 elements - this mirror probably does not hold data "
+                    "for the study area"
+                )
 
             if verbose:
-                print(f"ok ({len(data.get('elements', []))} elements)")
+                print(f"ok ({n_elements} elements)")
             return data
 
         except (requests.RequestException, ValueError) as error:
