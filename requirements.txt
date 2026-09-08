@@ -1,0 +1,23 @@
+# Core numerical and data handling
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+
+# Images (decoding the elevation tiles)
+Pillow>=10.0
+
+# Downloading data
+requests>=2.31
+
+# Interactive maps
+folium>=0.15
+branca>=0.7
+
+# Charts
+matplotlib>=3.7
+
+# Machine learning (optional supervised extension)
+scikit-learn>=1.3
+
+# Tests
+pytest>=7.4
