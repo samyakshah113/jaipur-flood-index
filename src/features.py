@@ -352,10 +352,20 @@ def build_feature_table(terrain, osm_layers, grid, verbose=True):
 
     table = pd.DataFrame(rows)
 
-    # Cells with essentially nothing in them are countryside inside our rectangle, not
-    # city. Keeping them would drag every percentile calculation towards zero and make
-    # the urban areas all look uniformly high risk by comparison.
-    table["is_urban"] = (table["building_count"] > 0) | (table["road_length_m"] > 50)
+    # Which cells count as "the city"? This decides what gets scored AND what the
+    # percentile ranking is measured against, so it moves every number in the project.
+    #
+    # The first version used (any building) OR (more than 50 m of road). That let a
+    # highway crossing farmland qualify: 76% of the resulting "urban" cells contained
+    # no buildings whatsoever, and the median one had zero. Exposure was then ranked
+    # against mostly-empty countryside, which made high exposure scores meaningless.
+    #
+    # 800 m of road inside a 9-hectare cell means a street network rather than a road
+    # passing through. Thresholds live in config.py so they can be argued with.
+    table["is_urban"] = (
+        (table["road_length_m"] >= config.URBAN_MIN_ROAD_M)
+        | (table["building_count"] >= config.URBAN_MIN_BUILDINGS)
+    )
 
     if verbose:
         urban = table["is_urban"].sum()

@@ -259,54 +259,73 @@ def sensitivity_analysis(table, n_trials=200, seed=42, verbose=True):
     return table
 
 
-def top_risk_areas(table, n=20, min_buildings=5, verbose=True):
+def drainage_corridors(table, n=20):
     """
-    Return the highest-risk cells that are actually worth acting on.
+    Where does water physically collect? Hazard only, exposure ignored.
 
-    TWO CORRECTIONS ARE APPLIED HERE, AND BOTH CAME OUT OF TESTING.
+    WHY THIS LIST EXISTS SEPARATELY, AND WHAT IT COST TO LEARN
+    The first version of this project had one list called "top priority sites", built
+    from the blended risk index. Checking the results in satellite view showed almost
+    every entry sitting on a nala corridor with open ground around it.
 
-    1. MINIMUM EXPOSURE. The first version of this function ranked purely on the risk
-       index, and the top ten came back as low-lying cells with two or three buildings
-       in them — empty ground beside a drainage line. Those cells are hydrologically
-       correct and operationally useless: nobody needs their empty field de-watered.
-       Because the index is a weighted SUM, a cell can score high on hazard alone. So
-       for the PRIORITY list specifically we require a real population of buildings.
-       The risk map still shows every cell; this filter only affects the action list.
+    That was not a bug in the hydrology — it is exactly right. Water collects in
+    drainage corridors, and in Jaipur those corridors are often undeveloped floodplain.
+    The mistake was mine, in labelling: "where water collects" and "where a municipality
+    should act" are DIFFERENT QUESTIONS, and I had merged them into one list under a
+    name that implied the second.
 
-    2. ROBUSTNESS FIRST. Sorting by risk alone puts cells at the top whose position
-       depends on the exact weights chosen. Sorting by sensitivity-analysis stability
-       first gives you the list you can defend when someone asks "what if you had
-       weighted it differently".
+    So there are now two lists. This one is honest about being hydrology: these are the
+    corridors driving flood risk across the city. They are worth knowing precisely
+    because everything downstream of them depends on how they behave.
+    """
+    urban = table[table["is_urban"]].copy()
+    urban = urban.sort_values("hazard_score", ascending=False)
 
-    Note what just happened: a bug found by looking at the output, diagnosed, and fixed
-    with the reasoning written down. That is worth more in an interview than the result.
+    columns = ["lat", "lon", "hazard_score", "twi", "flow_accumulation",
+               "depression_depth_m", "elevation_m", "relative_elevation_m",
+               "drain_distance_m", "building_count", "road_length_m"]
+    return urban[columns].head(n).reset_index(drop=True)
+
+
+def populated_risk_areas(table, n=20, verbose=True):
+    """
+    Where is risk high AND people are actually there? The list to act on.
+
+    This applies an exposure floor: a cell must sit in the top 40% of the city for
+    exposure to appear here at all. See config.PRIORITY_MIN_EXPOSURE_PERCENTILE.
+
+    NOTE ON WHAT "EXPOSURE" LEANS ON
+    Because OpenStreetMap has roughly a tenth of Jaipur's buildings, exposure is driven
+    mainly by road density, which is mapped properly. A 300 m cell holding 3 km of road
+    is a dense street network whether or not its buildings have been surveyed. That is a
+    measurement decision forced by the data, and it is written up in METHODOLOGY.md
+    rather than hidden.
     """
     urban = table[table["is_urban"]].copy()
 
-    # Apply the exposure floor, but do not let it return an empty list if the whole
-    # study area is sparsely built.
-    populated = urban[urban["building_count"] >= min_buildings]
-    if len(populated) >= n:
-        urban = populated
-    elif verbose:
-        print(f"  note: only {len(populated)} cells have >= {min_buildings} buildings; "
-              f"showing the most exposed available instead")
-        urban = urban.sort_values("building_count", ascending=False).head(max(n * 5, 50))
+    if "exposure_score" not in urban.columns or urban["exposure_score"].isna().all():
+        raise ValueError("Run compute_component_scores() before this")
 
-    if "rank_stability" in urban.columns:
-        urban = urban.sort_values(
+    floor = urban["exposure_score"].quantile(config.PRIORITY_MIN_EXPOSURE_PERCENTILE)
+    populated = urban[urban["exposure_score"] >= floor]
+
+    if verbose:
+        print(f"  exposure floor at the {config.PRIORITY_MIN_EXPOSURE_PERCENTILE:.0%} "
+              f"percentile keeps {len(populated)} of {len(urban)} urban cells")
+
+    if "rank_stability" in populated.columns:
+        populated = populated.sort_values(
             ["rank_stability", "risk_index"], ascending=[False, False]
         )
     else:
-        urban = urban.sort_values("risk_index", ascending=False)
+        populated = populated.sort_values("risk_index", ascending=False)
 
-    columns = [
-        "lat", "lon", "risk_index", "risk_band",
-        "hazard_score", "exposure_score", "sensitivity_score",
-        "elevation_m", "relative_elevation_m", "twi",
-        "depression_depth_m", "drain_distance_m", "building_count",
-    ]
-    if "rank_stability" in urban.columns:
+    columns = ["lat", "lon", "risk_index", "risk_band",
+               "hazard_score", "exposure_score", "sensitivity_score",
+               "elevation_m", "relative_elevation_m", "twi",
+               "depression_depth_m", "drain_distance_m",
+               "building_count", "road_length_m"]
+    if "rank_stability" in populated.columns:
         columns.append("rank_stability")
 
-    return urban[columns].head(n).reset_index(drop=True)
+    return populated[columns].head(n).reset_index(drop=True)

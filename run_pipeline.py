@@ -115,14 +115,27 @@ def main():
     table = index.compute_risk_index(table)
     table = index.sensitivity_analysis(table)
 
-    top_areas = index.top_risk_areas(table, n=20)
+    # TWO LISTS, because they answer two different questions. Merging them was the
+    # original mistake: every entry landed on a nala corridor with open ground around
+    # it — hydrologically right, operationally useless.
+    corridors = index.drainage_corridors(table, n=20)
+    top_areas = index.populated_risk_areas(table, n=20)
 
-    print("\n  Ten highest-priority cells (robust across weightings):")
-    print("  " + "-" * 62)
+    print("\n  DRAINAGE CORRIDORS — where water physically collects")
+    print("  " + "-" * 66)
+    for rank, (_, site) in enumerate(corridors.head(5).iterrows(), start=1):
+        print(f"   {rank:2d}. {site['lat']:.4f}, {site['lon']:.4f}   "
+              f"TWI {site['twi']:5.1f}   "
+              f"upstream {site['flow_accumulation']:8.0f} cells   "
+              f"{site['road_length_m']:.0f} m road")
+
+    print("\n  POPULATED HIGH-RISK AREAS — where risk meets people")
+    print("  " + "-" * 66)
     for rank, (_, site) in enumerate(top_areas.head(10).iterrows(), start=1):
         print(f"   {rank:2d}. {site['lat']:.4f}, {site['lon']:.4f}   "
               f"risk {site['risk_index']:5.1f}   "
-              f"robust in {site['rank_stability'] * 100:3.0f}% of weightings   "
+              f"robust {site['rank_stability'] * 100:3.0f}%   "
+              f"{site['road_length_m']:5.0f} m road   "
               f"{site['building_count']:.0f} buildings")
 
     # ------------------------------------------------------------------
@@ -154,9 +167,13 @@ def main():
     table.to_csv(table_path, index=False)
     print(f"\n  Full cell table -> {table_path}")
 
-    top_path = config.OUTPUT_DIR / "top_priority_sites.csv"
+    top_path = config.OUTPUT_DIR / "populated_risk_areas.csv"
     top_areas.to_csv(top_path, index=False)
-    print(f"  Priority sites  -> {top_path}")
+    print(f"  Populated risk  -> {top_path}")
+
+    corridor_path = config.OUTPUT_DIR / "drainage_corridors.csv"
+    corridors.to_csv(corridor_path, index=False)
+    print(f"  Corridors       -> {corridor_path}")
 
     if not args.skip_maps:
         print("\n  Rendering maps...")
@@ -164,6 +181,7 @@ def main():
             table, grid,
             drains=osm_layers["drains"],
             top_areas=top_areas,
+            corridors=corridors,
             synthetic=args.demo,
             validation=validation_points,
         )

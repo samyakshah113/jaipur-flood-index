@@ -91,17 +91,53 @@ HAZARD_WEIGHTS = {
     "slope": 0.10,               # flat ground sheds water slowly
 }
 
+# WEIGHT WHAT YOU CAN ACTUALLY MEASURE.
+# The obvious weighting puts buildings first — more buildings, more exposure. Checking
+# the real data killed that: OpenStreetMap has 43,870 buildings mapped across the study
+# area, while Jaipur's population of roughly 4 million implies something nearer 400,000.
+# Coverage is around a tenth, and it is uneven, so building count is close to noise here.
+#
+# Road length is mapped properly: 10,488 km across the study area is a realistic figure,
+# and it discriminates cleanly (median cell 1,240 m, 99th percentile 3,515 m). So road
+# density carries the most weight — not because it is the better concept, but because it
+# is the better measurement. Say that out loud rather than pretending otherwise.
 EXPOSURE_WEIGHTS = {
-    "building_density": 0.50,
-    "road_density": 0.30,
+    "road_density": 0.55,
+    "building_density": 0.25,
     "amenity_density": 0.20,     # schools, clinics, markets — critical facilities
 }
 
+# Same reasoning as EXPOSURE_WEIGHTS above. Unpaved road share is measured from a layer
+# that is well surveyed; settlement density leans on the building data we just showed to
+# be roughly a tenth complete, so it gets the smallest share.
 SENSITIVITY_WEIGHTS = {
-    "small_building_fraction": 0.45,  # proxy for dense informal / low-income housing
-    "unpaved_road_fraction": 0.35,    # proxy for weaker municipal infrastructure
-    "drainage_absence": 0.20,         # no mapped stormwater drain nearby
+    "unpaved_road_fraction": 0.50,    # proxy for weaker municipal infrastructure
+    "drainage_absence": 0.30,         # no mapped stormwater drain nearby
+    "small_building_fraction": 0.20,  # proxy for dense informal housing (weak coverage)
 }
+
+# ----------------------------------------------------------------------------
+# 4b. WHAT COUNTS AS "URBAN"
+# ----------------------------------------------------------------------------
+# This decides which cells are scored at all, and which cells the percentile ranking is
+# measured against. Get it wrong and every score shifts.
+#
+# THE ORIGINAL VERSION WAS WRONG. It counted a cell as urban if it held ANY building or
+# more than 50 m of road. Fifty metres of road inside a 300 m cell is a highway crossing
+# a field — so 76% of "urban" cells turned out to contain no buildings at all, and the
+# median urban cell had zero. Exposure was being ranked against a population of empty
+# countryside, which made the ranking close to meaningless.
+#
+# 800 m of road inside a 300 m cell (9 hectares) means a street network, not a road
+# passing through. The building clause catches dense settlement that OSM has mapped but
+# whose streets it has not.
+URBAN_MIN_ROAD_M = 800
+URBAN_MIN_BUILDINGS = 3
+
+# For the populated-risk list: a cell must sit in the top 40% for exposure to qualify.
+# Without a floor like this the list fills with drainage corridors — hydrologically the
+# right answer, operationally useless, because nobody needs an empty floodplain drained.
+PRIORITY_MIN_EXPOSURE_PERCENTILE = 0.60
 
 
 # ----------------------------------------------------------------------------

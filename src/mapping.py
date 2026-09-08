@@ -33,7 +33,7 @@ def _risk_colour(value, colormap):
     return colormap(value)
 
 
-def build_risk_map(table, grid, drains=None, top_areas=None,
+def build_risk_map(table, grid, drains=None, top_areas=None, corridors=None,
                    synthetic=False, validation=None, output_path=None):
     """
     Build the main interactive risk map.
@@ -136,9 +136,32 @@ def build_risk_map(table, grid, drains=None, top_areas=None,
             ).add_to(drain_layer)
         drain_layer.add_to(risk_map)
 
-    # --- priority sites -------------------------------------------------------
+    # --- drainage corridors ---------------------------------------------------
+    # Shown separately from the populated-risk list, and off by default. These are the
+    # hydrology: where water collects, regardless of whether anyone lives there. Often
+    # open floodplain, which is why they belong on their own layer with their own name.
+    if corridors is not None and len(corridors) > 0:
+        corridor_layer = folium.FeatureGroup(
+            name="Drainage corridors (hydrology only)", show=False)
+        for rank, (_, site) in enumerate(corridors.iterrows(), start=1):
+            folium.CircleMarker(
+                location=[site["lat"], site["lon"]],
+                radius=7,
+                color="#08519c",
+                weight=2,
+                fill=True,
+                fill_color="#6baed6",
+                fill_opacity=0.75,
+                tooltip=(f"Drainage corridor {rank}<br>"
+                         f"TWI {site['twi']:.1f}<br>"
+                         f"{site['flow_accumulation']:.0f} upstream cells"),
+            ).add_to(corridor_layer)
+        corridor_layer.add_to(risk_map)
+
+    # --- populated high-risk areas --------------------------------------------
     if top_areas is not None and len(top_areas) > 0:
-        priority_layer = folium.FeatureGroup(name="Top priority sites", show=True)
+        priority_layer = folium.FeatureGroup(
+            name="Populated high-risk areas", show=True)
         for rank, (_, site) in enumerate(top_areas.iterrows(), start=1):
             folium.Marker(
                 location=[site["lat"], site["lon"]],
@@ -150,7 +173,9 @@ def build_risk_map(table, grid, drains=None, top_areas=None,
                                 border:2px solid white;
                                 box-shadow:0 1px 4px rgba(0,0,0,.4)">{rank}</div>
                 """),
-                tooltip=f"Priority {rank}: risk {site['risk_index']:.0f}/100",
+                tooltip=(f"Populated risk {rank}<br>"
+                         f"risk {site['risk_index']:.0f}/100<br>"
+                         f"{site['road_length_m']:.0f} m road"),
             ).add_to(priority_layer)
         priority_layer.add_to(risk_map)
 
