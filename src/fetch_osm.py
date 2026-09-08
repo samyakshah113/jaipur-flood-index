@@ -14,6 +14,15 @@ that makes a reviewer trust the rest of your work.
 HOW OVERPASS WORKS
 Overpass is a query language for OpenStreetMap. You describe the features you want and
 the box to search in, and it returns them as JSON. Think of it as SQL for the map.
+
+THREE HARD-WON LESSONS, ALL FOUND BY THINGS GOING WRONG
+  1. Send a real User-Agent. Without one, mirrors answer 406 or 429.
+  2. Never trust an HTTP 200. It can carry an HTML error page, a server-side timeout
+     notice, or a perfectly valid empty result from a mirror that has no data for your
+     region.
+  3. Ask for less at a time. A regex tag filter cannot use the tag index, so Overpass
+     scans instead of looking up; and one request covering a whole city times out at
+     the gateway. Exact tag matches, split across sub-areas, is dramatically cheaper.
 """
 
 import time
@@ -35,21 +44,19 @@ def _validate_overpass_response(response):
       2. The body is valid JSON but carries a "remark" field saying the query timed
          out server-side. Elements come back as an empty list. Everything downstream
          then works perfectly on no data.
-      3. The status is 429 (rate limited) or 406, which older versions of this code
-         quietly skipped past.
+      3. The status is 429 (rate limited), 406 (rejected) or 504 (gateway timeout),
+         which older versions of this code quietly skipped past.
 
     Returns the parsed JSON, or raises ValueError describing what went wrong.
     """
     if response.status_code != 200:
-        raise ValueError(
-            f"HTTP {response.status_code}: {response.text[:200].strip()}"
-        )
+        # Strip HTML tags out of error pages so the message stays readable.
+        body = response.text[:150].replace("\n", " ").strip()
+        raise ValueError(f"HTTP {response.status_code} ({body[:60]}...)")
 
     content_type = response.headers.get("content-type", "")
     if "json" not in content_type.lower():
-        raise ValueError(
-            f"expected JSON but got {content_type!r}: {response.text[:200].strip()}"
-        )
+        raise ValueError(f"expected JSON, got {content_type!r}")
 
     try:
         data = response.json()
@@ -63,76 +70,140 @@ def _validate_overpass_response(response):
     return data
 
 
-def _run_overpass_query(query, verbose=True, expect_results=True):
+def _run_overpass_query(query, verbose=True, rounds=2):
     """
     Send a query to Overpass, trying each mirror until one gives a valid answer.
 
     Every request identifies itself via config.HTTP_HEADERS. Without that, mirrors
     return 406 or 429 and the pipeline ends up with no data at all.
 
-    expect_results=True treats an EMPTY answer as a failure worth retrying elsewhere.
-    That is not paranoia: a regional Overpass instance queried outside its region
-    returns 200, valid JSON, no remark, and zero elements. Accepting that silently is
-    exactly how this project first produced a blank map of Jaipur and called it a
-    success. If a mirror has no data for the study area, move on to one that does.
+    'rounds' controls how many times we work through the whole mirror list. A 504
+    Gateway Timeout usually means the server is busy right now rather than broken, so
+    it is worth waiting and coming back rather than giving up on the first pass.
+
+    Note this does NOT reject an empty result any more. With the study area split into
+    sub-areas (see _collect below), a single sub-area legitimately can contain no
+    drains. Emptiness is now judged across the whole layer instead, where it actually
+    means something.
     """
     problems = []
 
-    for mirror in config.OVERPASS_MIRRORS:
-        host = mirror.split("/")[2]
-        try:
+    for attempt in range(rounds):
+        if attempt > 0:
+            wait = 20 * attempt
             if verbose:
-                print(f"  querying {host} ...", end=" ", flush=True)
+                print(f"    all mirrors busy, waiting {wait}s before retrying")
+            time.sleep(wait)
 
-            response = requests.post(
-                mirror,
-                data={"data": query},
-                headers=config.HTTP_HEADERS,
-                timeout=300,
-            )
-
-            data = _validate_overpass_response(response)
-            n_elements = len(data.get("elements", []))
-
-            if expect_results and n_elements == 0:
-                raise ValueError(
-                    "returned 0 elements - this mirror probably does not hold data "
-                    "for the study area"
+        for mirror in config.OVERPASS_MIRRORS:
+            host = mirror.split("/")[2]
+            try:
+                response = requests.post(
+                    mirror,
+                    data={"data": query},
+                    headers=config.HTTP_HEADERS,
+                    timeout=180,
                 )
+                return _validate_overpass_response(response)
 
-            if verbose:
-                print(f"ok ({n_elements} elements)")
-            return data
-
-        except (requests.RequestException, ValueError) as error:
-            problems.append(f"{host}: {error}")
-            if verbose:
-                print(f"failed - {str(error)[:90]}")
-
-            # Rate limiting eases if you actually wait, so give it a moment before
-            # hammering the next mirror.
-            if "429" in str(error) or "rate" in str(error).lower():
-                time.sleep(5)
-            continue
+            except (requests.RequestException, ValueError) as error:
+                problems.append(f"{host}: {str(error)[:70]}")
+                if "429" in str(error):
+                    time.sleep(5)
+                continue
 
     raise RuntimeError(
-        "Every Overpass mirror refused this query.\n  "
-        + "\n  ".join(problems)
-        + "\n\nIf these are timeouts, the study area may be too large for one "
-        "request. If they mention User-Agent, check config.USER_AGENT is being sent."
+        "Every Overpass mirror refused this query, twice.\n  "
+        + "\n  ".join(problems[-6:])
+        + "\n\n504 or timeout means the servers are busy — wait a few minutes and run "
+        "this cell again. If they mention User-Agent, check config.USER_AGENT is set."
     )
 
 
-def _bbox_string(study_area=None):
+def _bbox_string(area):
     """
     Overpass wants bounding boxes as 'south,west,north,east'.
 
     That ordering is not the one most people expect (it is not 'min_lon, min_lat').
     Getting it wrong silently returns data for the wrong part of the world, so it is
-    worth having one function that does it correctly rather than typing it out repeatedly.
+    worth having one function that does it correctly rather than typing it out
+    repeatedly.
     """
-    area = study_area or config.STUDY_AREA
     return f"{area['min_lat']},{area['min_lon']},{area['max_lat']},{area['max_lon']}"
+
+
+def _split_area(study_area, n):
+    """
+    Cut the study area into an n x n grid of smaller boxes.
+
+    WHY BOTHER
+    A single request covering all 26 x 26 km of Jaipur is enough work that the server
+    gives up and returns 504 Gateway Timeout — which is what happens when Overpass is
+    under load. Sixteen requests each covering a sixteenth of the area do the same
+    total work, but no individual request is big enough to be killed.
+
+    This is the standard way to stay inside a shared free service's limits: ask for
+    less, more often, rather than asking for everything and hoping.
+    """
+    lat_min, lat_max = study_area["min_lat"], study_area["max_lat"]
+    lon_min, lon_max = study_area["min_lon"], study_area["max_lon"]
+
+    boxes = []
+    for i in range(n):
+        for j in range(n):
+            boxes.append({
+                "min_lat": lat_min + (lat_max - lat_min) * i / n,
+                "max_lat": lat_min + (lat_max - lat_min) * (i + 1) / n,
+                "min_lon": lon_min + (lon_max - lon_min) * j / n,
+                "max_lon": lon_min + (lon_max - lon_min) * (j + 1) / n,
+            })
+    return boxes
+
+
+def _collect(build_query, study_area, tiles_per_side, label, verbose=True):
+    """
+    Run one query per sub-area and merge the results, removing duplicates.
+
+    WHY DEDUPLICATION IS ESSENTIAL
+    A road that crosses a sub-area boundary is returned by BOTH queries covering it.
+    Without removing duplicates, every boundary-crossing feature is counted twice —
+    which would quietly inflate road density along a grid of invisible lines across
+    your map, and those lines would look exactly like a real finding.
+
+    OSM gives every element a stable id, so (type, id) identifies a feature uniquely.
+    """
+    boxes = _split_area(study_area, tiles_per_side)
+
+    seen = set()
+    elements = []
+    duplicates = 0
+
+    for k, box in enumerate(boxes, 1):
+        if verbose:
+            print(f"  {label}: area {k}/{len(boxes)} ...", end=" ", flush=True)
+
+        data = _run_overpass_query(build_query(box), verbose)
+        got = data.get("elements", [])
+
+        for element in got:
+            key = (element.get("type"), element.get("id"))
+            if key in seen:
+                duplicates += 1
+                continue
+            seen.add(key)
+            elements.append(element)
+
+        if verbose:
+            print(f"{len(got)}")
+
+        # Be a good citizen of a free shared service.
+        if k < len(boxes):
+            time.sleep(1)
+
+    if verbose and duplicates:
+        print(f"  {label}: removed {duplicates} duplicates from sub-area overlaps")
+
+    return elements
 
 
 # ----------------------------------------------------------------------------
@@ -145,37 +216,37 @@ def fetch_drainage(study_area=None, verbose=True):
     For Jaipur this should pick up the Dravyavati river corridor (the old Amanishah
     nala, redeveloped as a channel) plus assorted smaller nalas and municipal drains.
 
-    The tags we ask for:
-      waterway=drain   — a purpose-built stormwater or wastewater drain
-      waterway=ditch   — a smaller unlined channel
-      waterway=stream  — a natural watercourse
-      waterway=river   — a large natural watercourse
-      waterway=canal   — an engineered channel
+    NOTE ON THE QUERY SHAPE
+    The obvious way to write this is one regex: way["waterway"~"drain|ditch|..."].
+    That is much slower on the server, because a regex cannot use the tag index — the
+    database has to look at every waterway and test it. Listing exact values instead
+    lets Overpass do five fast index lookups. Same result, a fraction of the work, and
+    far less likely to be killed by a gateway timeout.
     """
-    query = f"""
-    [out:json][timeout:180];
-    (
-      way["waterway"~"drain|ditch|stream|river|canal"]({_bbox_string(study_area)});
-    );
-    out geom;
-    """
+    study_area = study_area or config.STUDY_AREA
+
+    def build(box):
+        types = ["drain", "ditch", "stream", "river", "canal"]
+        clauses = "\n      ".join(
+            f'way["waterway"="{t}"]({_bbox_string(box)});' for t in types
+        )
+        return f"[out:json][timeout:120];\n    (\n      {clauses}\n    );\n    out geom;"
 
     if verbose:
         print("Fetching drainage network from OpenStreetMap")
 
-    data = _run_overpass_query(query, verbose)
+    elements = _collect(build, study_area, 2, "drains", verbose)
 
     drains = []
-    for element in data.get("elements", []):
+    for element in elements:
         # 'geometry' is the list of points making up the line. Occasionally an element
         # comes back without it; skipping those is safer than crashing.
         if "geometry" not in element:
             continue
-
         drains.append({
             "type": element.get("tags", {}).get("waterway", "unknown"),
             "name": element.get("tags", {}).get("name", ""),
-            "points": [(point["lat"], point["lon"]) for point in element["geometry"]],
+            "points": [(p["lat"], p["lon"]) for p in element["geometry"]],
         })
 
     if verbose:
@@ -201,30 +272,29 @@ def fetch_roads(study_area=None, verbose=True):
     neighbourhoods" part of the research question without pretending to have census
     income data that is not publicly available at this resolution.
     """
-    query = f"""
-    [out:json][timeout:180];
-    (
-      way["highway"]({_bbox_string(study_area)});
-    );
-    out geom;
-    """
+    study_area = study_area or config.STUDY_AREA
+
+    def build(box):
+        return (f'[out:json][timeout:120];\n'
+                f'way["highway"]({_bbox_string(box)});\n'
+                f'out geom;')
 
     if verbose:
         print("Fetching road network from OpenStreetMap")
 
-    data = _run_overpass_query(query, verbose)
+    # Jaipur has ~65,000 road ways. Nine sub-areas keeps each response manageable.
+    elements = _collect(build, study_area, 3, "roads", verbose)
 
     roads = []
-    for element in data.get("elements", []):
+    for element in elements:
         if "geometry" not in element:
             continue
-
         tags = element.get("tags", {})
         roads.append({
             "highway": tags.get("highway", ""),
             "surface": tags.get("surface", ""),   # empty means simply not surveyed
             "name": tags.get("name", ""),
-            "points": [(point["lat"], point["lon"]) for point in element["geometry"]],
+            "points": [(p["lat"], p["lon"]) for p in element["geometry"]],
         })
 
     if verbose:
@@ -242,36 +312,35 @@ def fetch_buildings(study_area=None, verbose=True):
 
     We use these two ways:
       - Density: more buildings = more people and property exposed to a flood.
-      - Footprint SIZE: this is the interesting one. Dense clusters of very small
-        footprints are characteristic of informal and low-income settlement, while
-        large footprints indicate planned housing, commercial or institutional
-        development. It is a proxy, not a measurement of income — but it is a
-        published, widely used one in urban remote sensing.
+      - Footprint SIZE: dense clusters of very small footprints are characteristic of
+        informal and low-income settlement, while large footprints indicate planned
+        housing, commercial or institutional development. It is a proxy, not a
+        measurement of income — but a published, widely used one.
 
-    NOTE ON VOLUME: Jaipur has a lot of mapped buildings and this query can return
-    tens of megabytes. `out center;` asks Overpass for just the CENTRE POINT of each
-    building rather than its full outline, which cuts the download dramatically. We
-    lose exact footprint shape but keep position, which is all we need for density.
+    NOTE ON VOLUME: this is by far the heaviest query in the project. `out center;`
+    asks Overpass for just the CENTRE POINT of each building rather than its full
+    outline, which cuts the download enormously. We lose exact footprint shape but keep
+    position, which is all we need for density.
     """
-    query = f"""
-    [out:json][timeout:300];
-    (
-      way["building"]({_bbox_string(study_area)});
-    );
-    out center;
-    """
+    study_area = study_area or config.STUDY_AREA
+
+    def build(box):
+        return (f'[out:json][timeout:120];\n'
+                f'way["building"]({_bbox_string(box)});\n'
+                f'out center;')
 
     if verbose:
-        print("Fetching buildings from OpenStreetMap (this is the slow one)")
+        print("Fetching buildings from OpenStreetMap (the slow one — be patient)")
 
-    data = _run_overpass_query(query, verbose)
+    # Sixteen sub-areas. This is the query that gets killed by gateway timeouts, so it
+    # gets cut the finest.
+    elements = _collect(build, study_area, 4, "buildings", verbose)
 
     buildings = []
-    for element in data.get("elements", []):
+    for element in elements:
         centre = element.get("center")
         if centre is None:
             continue
-
         tags = element.get("tags", {})
         buildings.append({
             "lat": centre["lat"],
@@ -298,22 +367,24 @@ def fetch_amenities(study_area=None, verbose=True):
     exactly the period when waterborne illness spikes. Emergency planners prioritise
     these, so a risk index that ignores them is not much use to the people it is for.
     """
-    query = f"""
-    [out:json][timeout:180];
-    (
-      node["amenity"~"school|hospital|clinic|doctors|marketplace|pharmacy"]({_bbox_string(study_area)});
-      way["amenity"~"school|hospital|clinic|doctors|marketplace|pharmacy"]({_bbox_string(study_area)});
-    );
-    out center;
-    """
+    study_area = study_area or config.STUDY_AREA
+    kinds = ["school", "hospital", "clinic", "doctors", "marketplace", "pharmacy"]
+
+    def build(box):
+        bbox = _bbox_string(box)
+        clauses = "\n      ".join(
+            f'node["amenity"="{k}"]({bbox});\n      way["amenity"="{k}"]({bbox});'
+            for k in kinds
+        )
+        return f"[out:json][timeout:120];\n    (\n      {clauses}\n    );\n    out center;"
 
     if verbose:
         print("Fetching critical facilities from OpenStreetMap")
 
-    data = _run_overpass_query(query, verbose)
+    elements = _collect(build, study_area, 2, "facilities", verbose)
 
     amenities = []
-    for element in data.get("elements", []):
+    for element in elements:
         # Nodes carry lat/lon directly; ways carry a 'center' instead.
         if "lat" in element:
             lat, lon = element["lat"], element["lon"]
@@ -321,7 +392,6 @@ def fetch_amenities(study_area=None, verbose=True):
             lat, lon = element["center"]["lat"], element["center"]["lon"]
         else:
             continue
-
         amenities.append({
             "lat": lat,
             "lon": lon,
@@ -336,22 +406,17 @@ def fetch_amenities(study_area=None, verbose=True):
 
 
 def fetch_all_osm(study_area=None, verbose=True):
-    """
-    Fetch every OSM layer in one go, pausing between queries.
-
-    The sleep is not laziness — Overpass is a free service run on donated hardware and
-    firing four heavy queries back to back is how you get your IP rate-limited.
-    """
+    """Fetch every OSM layer, then check the result is real before returning it."""
     layers = {}
 
     layers["drains"] = fetch_drainage(study_area, verbose)
-    time.sleep(3)
+    time.sleep(2)
 
     layers["roads"] = fetch_roads(study_area, verbose)
-    time.sleep(3)
+    time.sleep(2)
 
     layers["buildings"] = fetch_buildings(study_area, verbose)
-    time.sleep(3)
+    time.sleep(2)
 
     layers["amenities"] = fetch_amenities(study_area, verbose)
 
