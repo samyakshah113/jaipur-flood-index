@@ -121,11 +121,28 @@ DATA_SOURCES = {
     "rainfall": "https://archive-api.open-meteo.com/v1/archive",
 }
 
-# Overpass mirrors, in case the main one is busy. The pipeline tries them in order.
+# WHY THIS MATTERS MORE THAN IT LOOKS
+# Overpass is a free service run on donated hardware, and its operators throttle or
+# outright reject requests that arrive with a library's default User-Agent
+# ("python-requests/2.x"). One mirror answers such a request with a plain-text 429
+# saying so; the main server returns a bare 406. Neither is obviously a "you forgot a
+# header" error, and without this string the whole pipeline silently produced an empty
+# map. Identify yourself: it is both required here and basic good manners.
+USER_AGENT = (
+    "jaipur-flood-index/1.0 "
+    "(+https://github.com/samyakshah113/jaipur-flood-index)"
+)
+
+HTTP_HEADERS = {"User-Agent": USER_AGENT}
+
+# Overpass mirrors, tried in order. overpass.osm.ch is listed first because it proved
+# the most reliable in testing; the others are healthy fallbacks once a proper
+# User-Agent is sent.
 OVERPASS_MIRRORS = [
+    "https://overpass.osm.ch/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 ]
 
 

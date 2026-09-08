@@ -51,7 +51,10 @@ def fetch_daily_rainfall(lat=None, lon=None, start=None, end=None, verbose=True)
     if verbose:
         print(f"Fetching rainfall for ({lat:.4f}, {lon:.4f}) from {start} to {end}")
 
-    response = requests.get(config.DATA_SOURCES["rainfall"], params=params, timeout=60)
+    response = requests.get(
+        config.DATA_SOURCES["rainfall"], params=params,
+        headers=config.HTTP_HEADERS, timeout=60,
+    )
     response.raise_for_status()   # turns an HTTP error into a clear Python exception
 
     data = response.json()["daily"]

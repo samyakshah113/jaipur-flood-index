@@ -23,47 +23,90 @@ import requests
 from . import config
 
 
+def _validate_overpass_response(response):
+    """
+    Decide whether an Overpass reply is actually usable.
+
+    A 200 status is NOT sufficient, and assuming it was is what broke this pipeline.
+    Three separate ways a request can fail while looking fine:
+
+      1. The body is an HTML error page, not JSON. Calling .json() on it raises a
+         confusing JSONDecodeError about "line 1 column 1".
+      2. The body is valid JSON but carries a "remark" field saying the query timed
+         out server-side. Elements come back as an empty list. Everything downstream
+         then works perfectly on no data.
+      3. The status is 429 (rate limited) or 406, which older versions of this code
+         quietly skipped past.
+
+    Returns the parsed JSON, or raises ValueError describing what went wrong.
+    """
+    if response.status_code != 200:
+        raise ValueError(
+            f"HTTP {response.status_code}: {response.text[:200].strip()}"
+        )
+
+    content_type = response.headers.get("content-type", "")
+    if "json" not in content_type.lower():
+        raise ValueError(
+            f"expected JSON but got {content_type!r}: {response.text[:200].strip()}"
+        )
+
+    try:
+        data = response.json()
+    except ValueError as error:
+        raise ValueError(f"body was not valid JSON: {error}")
+
+    # Overpass reports server-side timeouts here, with HTTP 200 and no elements.
+    if "remark" in data:
+        raise ValueError(f"Overpass remark: {data['remark']}")
+
+    return data
+
+
 def _run_overpass_query(query, verbose=True):
     """
-    Send a query to Overpass, trying each mirror until one answers.
+    Send a query to Overpass, trying each mirror until one gives a valid answer.
 
-    The main Overpass server is free and heavily used, so it sometimes returns
-    "429 Too Many Requests" or simply times out. Falling back to a mirror makes the
-    pipeline reliable instead of flaky — the difference between a project that works
-    when someone else runs it and one that does not.
+    Every request identifies itself via config.HTTP_HEADERS. Without that, mirrors
+    return 406 or 429 and the pipeline ends up with no data at all.
     """
-    last_error = None
+    problems = []
 
     for mirror in config.OVERPASS_MIRRORS:
+        host = mirror.split("/")[2]
         try:
             if verbose:
-                print(f"  querying {mirror.split('/')[2]} ...", end=" ", flush=True)
+                print(f"  querying {host} ...", end=" ", flush=True)
 
-            response = requests.post(mirror, data={"data": query}, timeout=180)
+            response = requests.post(
+                mirror,
+                data={"data": query},
+                headers=config.HTTP_HEADERS,
+                timeout=300,
+            )
 
-            if response.status_code == 200:
-                if verbose:
-                    print("ok")
-                return response.json()
-
-            if response.status_code == 429:
-                if verbose:
-                    print("rate limited, waiting")
-                time.sleep(10)
-                continue
+            data = _validate_overpass_response(response)
 
             if verbose:
-                print(f"HTTP {response.status_code}")
+                print(f"ok ({len(data.get('elements', []))} elements)")
+            return data
 
-        except requests.RequestException as error:
-            last_error = error
+        except (requests.RequestException, ValueError) as error:
+            problems.append(f"{host}: {error}")
             if verbose:
-                print("failed")
+                print(f"failed - {str(error)[:90]}")
+
+            # Rate limiting eases if you actually wait, so give it a moment before
+            # hammering the next mirror.
+            if "429" in str(error) or "rate" in str(error).lower():
+                time.sleep(5)
             continue
 
     raise RuntimeError(
-        f"Every Overpass mirror failed. Last error: {last_error}. "
-        "This is usually temporary — wait a few minutes and run it again."
+        "Every Overpass mirror refused this query.\n  "
+        + "\n  ".join(problems)
+        + "\n\nIf these are timeouts, the study area may be too large for one "
+        "request. If they mention User-Agent, check config.USER_AGENT is being sent."
     )
 
 
@@ -298,5 +341,21 @@ def fetch_all_osm(study_area=None, verbose=True):
     time.sleep(3)
 
     layers["amenities"] = fetch_amenities(study_area, verbose)
+
+    # FAIL LOUDLY ON AN EMPTY RESULT.
+    # The first version of this pipeline returned empty layers without complaint and
+    # went on to render a blank map, reporting success the whole way. Silence is the
+    # worst possible response to having no data: every later stage "worked", and the
+    # only symptom was an unusually small output file.
+    if len(layers["roads"]) == 0 and len(layers["buildings"]) == 0:
+        raise RuntimeError(
+            "OpenStreetMap returned no roads and no buildings for the study area.\n"
+            "Jaipur has tens of thousands of both, so this is a fetch failure, not a\n"
+            "real result. Continuing would produce an empty map that looks fine.\n"
+            "Check the study area coordinates in config.py and the messages above."
+        )
+
+    if verbose:
+        print("\n  sanity check passed: OSM returned real data")
 
     return layers

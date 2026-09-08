@@ -101,7 +101,7 @@ def _download_tile(x, y, zoom, retries=3):
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, headers=config.HTTP_HEADERS, timeout=30)
             if response.status_code == 200:
                 return response.content
             # 404 means there is genuinely no tile there (e.g. open ocean) — no point retrying.
