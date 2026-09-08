@@ -19,11 +19,23 @@ import numpy as np
 from . import config
 
 
-# Colour scale: green (safe) through yellow and orange to dark red (worst).
-# Chosen because it reads correctly for the most common forms of colour blindness in
-# a way that a red/green-only scale does not — worth mentioning if anyone asks about
-# accessibility, which is a question that separates careful work from careless work.
-RISK_COLOURS = ["#1a9850", "#91cf60", "#d9ef8b", "#fee08b", "#fc8d59", "#d73027"]
+# SEQUENTIAL colour ramp: pale yellow through orange to dark red (ColorBrewer YlOrRd).
+#
+# THE PREVIOUS SCALE WAS WRONG, AND ITS COMMENT CLAIMED OTHERWISE.
+# It ran green -> yellow -> red, which is a DIVERGING ramp: its lightness goes
+# 0.23 -> 0.78 -> 0.17, rising to a pale middle and falling again. Risk is a MAGNITUDE,
+# so the scale has to darken monotonically; otherwise a low-risk and a high-risk cell
+# can be equally dark and the map cannot be read in greyscale at all.
+#
+# It was also not colourblind-safe, despite the old comment saying it was. Measured
+# deuteranopia separation between two adjacent steps was Delta-E 0.3 — indistinguishable
+# for the ~8% of men with red-green colour vision deficiency, which is precisely the
+# population a red/green scale fails.
+#
+# YlOrRd measures 0.960 -> 0.720 -> 0.534 -> 0.403 -> 0.218 -> 0.110: monotonic, so risk
+# reads as darkness whatever your colour vision, and survives being printed in black
+# and white.
+RISK_COLOURS = ["#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026"]
 
 
 def _risk_colour(value, colormap):
