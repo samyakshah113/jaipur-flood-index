@@ -33,17 +33,23 @@ def test_fill_depressions_fills_a_known_pit():
     """
     Build a flat plain at 100 m with one cell dug down to 90 m.
     After filling, that pit must rise back to the level of the plain around it.
+
+    NOTE ON THE TOLERANCE: filling deliberately adds a 1 mm epsilon per cell so that
+    filled areas slope gently towards their outlet instead of being perfectly flat.
+    Without it, water cannot cross filled ground at all (see the flat-routing test
+    below). So the pit lands a few millimetres above 100 m, not exactly on it, and
+    the tolerance here has to allow for that.
     """
     dem = np.full((7, 7), 100.0)
     dem[3, 3] = 90.0                      # dig a 10 m hole in the middle
 
     filled = fill_depressions(dem)
 
-    assert np.isclose(filled[3, 3], 100.0), (
-        f"The pit should have filled to 100 m, but it came out at {filled[3, 3]} m"
+    assert 100.0 <= filled[3, 3] < 100.05, (
+        f"The pit should have filled to just over 100 m, got {filled[3, 3]} m"
     )
-    # And nothing else should have changed.
-    assert np.isclose(filled[0, 0], 100.0)
+    # And nothing else should have moved more than the epsilon.
+    assert 100.0 <= filled[0, 0] < 100.05
 
 
 def test_fill_depressions_does_not_flatten_real_hills():
@@ -60,15 +66,103 @@ def test_fill_depressions_does_not_flatten_real_hills():
 
 
 def test_depression_depth_measures_the_hole():
-    """Depression depth of a 10 m pit should be 10 m, and 0 m everywhere flat."""
+    """
+    Depression depth of a 10 m pit should be 10 m, give or take the fill epsilon.
+    """
     dem = np.full((7, 7), 100.0)
     dem[3, 3] = 90.0
 
     filled = fill_depressions(dem)
     depth = depression_depth(dem, filled)
 
-    assert np.isclose(depth[3, 3], 10.0)
-    assert np.isclose(depth[0, 0], 0.0)
+    assert 10.0 <= depth[3, 3] < 10.05, f"expected about 10 m, got {depth[3, 3]}"
+    assert depth[0, 0] < 0.05
+
+
+def test_water_can_cross_filled_ground():
+    """
+    THE REGRESSION TEST FOR THE WORST BUG IN THIS PROJECT.
+
+    Build a basin with a wide flat floor and a single outlet on the left edge.
+    Physically, rain landing anywhere in that basin has exactly one way out, so a
+    large share of the map must drain through cells near the outlet.
+
+    The original implementation filled depressions to a PERFECTLY FLAT surface. D8
+    routing needs a strictly downhill neighbour, and flat ground offers none, so every
+    flow path stopped at the edge of the filled area. Measured: 6 cells out of 3,600
+    reached the busiest point, and 3,479 cells had nowhere to drain at all.
+
+    On real Jaipur data the symptom was subtler and easier to miss - flow accumulation
+    peaked at 478 across a 590,000-pixel map, where a main channel should carry tens of
+    thousands. Nothing errored. The maps looked perfectly reasonable.
+
+    Filling now adds a 1 mm gradient per cell, so filled ground slopes back towards its
+    outlet. This test fails loudly if that is ever removed.
+    """
+    size = 60
+    dem = np.zeros((size, size))
+    for r in range(size):
+        for c in range(size):
+            distance_from_centre = max(abs(r - size // 2), abs(c - size // 2))
+            # Flat inside a radius of 15 cells, rising walls outside it.
+            dem[r, c] = 100.0 + max(distance_from_centre - 15, 0) * 1.5
+    dem[size // 2, 0] = 90.0          # the single outlet
+
+    result = analyse_terrain(dem, cell_size_m=30)
+    accumulation = result["flow_accumulation"]
+    stranded = (result["flow_direction"] == -1).sum()
+
+    total_cells = size * size
+
+    assert accumulation.max() > total_cells * 0.10, (
+        f"Only {accumulation.max():.0f} of {total_cells} cells drain through the "
+        f"busiest point. Water is not crossing the filled basin floor - the fill "
+        f"epsilon has probably been removed."
+    )
+    assert stranded < total_cells * 0.10, (
+        f"{stranded} of {total_cells} cells have no downhill neighbour. Filled ground "
+        f"is flat and water is stuck on it."
+    )
+
+
+def test_fill_epsilon_stays_negligible():
+    """
+    The epsilon must never grow large enough to invent terrain.
+
+    SRTM elevation is accurate to roughly 5 m vertically. The gradient we add to make
+    filled ground drainable has to stay far below that, or we would be fixing one
+    problem by manufacturing an invisible one.
+
+    A PERFECTLY FLAT plane is the strict test: every cell qualifies for the epsilon, so
+    it accumulates across the entire grid and we see the worst case. Random terrain
+    would not work here - it contains genuine pits whose filling is metres deep and
+    entirely correct, which would swamp the thing we are trying to measure.
+    """
+    dem = np.full((50, 50), 400.0)
+
+    filled = fill_depressions(dem)
+    added = filled - dem
+
+    assert added.max() < 0.1, (
+        f"Epsilon accumulated to {added.max():.4f} m across a flat plane. It should "
+        f"stay far below the ~5 m accuracy of the elevation data."
+    )
+
+
+def test_filling_leaves_pit_free_terrain_alone():
+    """
+    On a slope with no depressions at all, filling should change nothing.
+
+    This checks the epsilon is only applied where it is needed - inside pits - rather
+    than being sprinkled over the whole map.
+    """
+    dem = np.array([[500.0 - r * 2.0 - c * 0.5 for c in range(30)] for r in range(30)])
+
+    filled = fill_depressions(dem)
+
+    assert np.allclose(filled, dem, atol=1e-9), (
+        "Terrain that drains perfectly well was modified by the filling step"
+    )
 
 
 def test_flow_runs_downhill_not_uphill():
